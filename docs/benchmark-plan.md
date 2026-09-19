@@ -31,8 +31,12 @@ subprocess has a deadline. Reports are local artifacts, not capacity guarantees.
   Build and run all CTest groups until counts, percentiles and failure paths pass.
 - [x] Add a temporary-database comparison runner and its integration test.
   Exercise both sync policies, then collect a small Release-build experiment.
-- [ ] Document methodology, upstream inspirations and limits; review the diff,
-  rerun tests, commit and publish the verified update.
+- [x] Document methodology, upstream inspirations and limits; review the diff
+  and rerun all six test groups in Debug and Release builds.
+
+The final reviewed runner also completed 36 Release smoke cases with 72,000
+successful measured requests. Results and limitations are archived under
+`docs/benchmarks/2026-09-19.md`.
 
 ## Sources
 

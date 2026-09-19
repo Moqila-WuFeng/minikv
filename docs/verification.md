@@ -35,7 +35,7 @@ MiniKV 自有代码构建开启 `-Wall -Wextra -Wpedantic`，本次构建未出�
 ## 基准工具验证
 
 新增 `minikv_bench`、统计单元测试及隔离实验运行器。Debug 和 Release
-构建的验收包含以下六组 CTest：原有 `store_contract`、`rpc_integration`，以及
+构建均通过以下六组 CTest：原有 `store_contract`、`rpc_integration`，以及
 `bench_stats`、`benchmark_contract`、`benchmark_runner`、`benchmark_runner_unit`。
 
 新增覆盖：精确分位数、请求数不能被线程数整除、请求数小于线程数、
@@ -46,6 +46,8 @@ NOT_FOUND、读回内容不匹配、RPC 不可达、标准输出失败、报告�
 基准工具的源代码审查未发现需要修复的 C++ 问题；自动化测试仍是主要验收依据。
 运行器审查发现端口归属和源码元数据问题，已通过先失败后通过的回归测试修复。
 测试驱动的外层超时现在清理独立进程组，参数错误检查不再依赖已有报告文件造成的失败。
+最终运行器完成 36 个 Release 实验 case，共 72000 次测量请求全部成功。
+原始结果及适用范围见 [WAL 对比样本](benchmarks/2026-09-19.md)。
 Shell 启动脚本通过 `bash -n`。上游依赖及 API 来源见
 [性能测量说明](benchmarking.md)和[第三方声明](../THIRD_PARTY_NOTICES.md)。
 

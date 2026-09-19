@@ -126,6 +126,7 @@ RocksDB 同步 I/O 在 RPC 回调中执行，可能阻塞工作线程。键值�
 - [架构与路线图](docs/implementation-plan.md)
 - [验证记录](docs/verification.md)
 - [性能测量方法与命令](docs/benchmarking.md)
+- [WAL 对比样本与原始数据](docs/benchmarks/2026-09-19.md)
 - [第三方组件与许可证](THIRD_PARTY_NOTICES.md)
 
 ## 许可证
