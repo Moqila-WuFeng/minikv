@@ -69,3 +69,12 @@ its own inventory and license review against the actual shipped artifacts,
 including applicable notices, license texts, source or relinking obligations.
 These source-release records are not a blanket compliance certification for
 such distributions.
+
+## Benchmark Design References
+
+The RPC benchmark uses API and workload-design ideas from the pinned
+[bRPC C++ client example](https://github.com/apache/brpc/blob/94f1bbd32845a45f0218dfe43e25791252bdcb72/example/echo_c%2B%2B/client.cpp)
+and [RocksDB's benchmark documentation](https://github.com/facebook/rocksdb/wiki/Benchmarking-tools).
+No benchmark source was copied from those projects. MiniKV's workload driver,
+statistics, isolated experiment runner and tests are independently implemented
+under this project's Apache-2.0 license. No additional runtime library was added.

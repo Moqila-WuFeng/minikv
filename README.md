@@ -13,6 +13,8 @@
 - 独立的业务错误码与 RPC 错误处理，客户端不自动重试。
 - bRPC 内置并发控制，默认最大并发请求数为 64。
 - SIGINT / SIGTERM 优雅退出；SIGKILL 后已确认数据恢复测试。
+- 多线程 RPC 基准客户端：Put/Get/混合负载、错误分类、吞吐及 P50/P95/P99。
+- 隔离数据库中的 WAL 同步策略对比，输出可复核的 JSON 实验报告。
 
 ## 架构
 
@@ -29,6 +31,7 @@ minikv_cli -> Protobuf / bRPC -> KVServiceImpl -> Store -> RocksDB
 | `src/kv_service.*` | RPC 方法实现与存储错误映射 |
 | `src/server_main.cpp` | 参数、启动与优雅关闭 |
 | `src/client_main.cpp` | 命令行解析和同步 RPC 调用 |
+| `src/bench_main.cpp` | 多线程闭环压测、负载生成和 JSON 报告 |
 | `tests/` | 存储契约与真实进程集成测试 |
 | `scripts/` | 依赖构建、测试和启动入口 |
 
@@ -100,10 +103,14 @@ bash scripts/run-client.sh --output_file=/path/to/output.bin get blob
 
 ## 测试
 
-CTest 包含两组测试：
+CTest 包含六组测试：
 
 - `store_contract`：CRUD、覆盖、空值、二进制、长度边界、数据库锁、四线程独立键读写和数据库重开。
 - `rpc_integration`：真实 C++ 客户端与服务端、退出码、标准输出失败、1 MiB 二进制文件、并发请求、SIGKILL 恢复、删除持久化、SIGTERM 退出及服务不可达。
+- `bench_stats`：nearest-rank 延迟分位数、空样本和小样本边界。
+- `benchmark_contract`：压测计数、预热隔离、读回校验、参数边界及错误路径。
+- `benchmark_runner`：临时数据库、同步策略交替、报告保护、超时退出和进程回收。
+- `benchmark_runner_unit`：启动归属校验与实际构建目录的源码元数据。
 
 测试使用临时数据库并回收子进程，不操作正常服务的数据目录。详细结果见[验证记录](docs/verification.md)。
 
@@ -111,13 +118,14 @@ CTest 包含两组测试：
 
 MiniKV 当前是单机服务，尚不支持 TTL、复制、分片、事务、认证、TLS 或独立存储执行队列。默认仅监听回环地址，不应直接暴露到不可信网络。
 
-RocksDB 同步 I/O 在 RPC 回调中执行，可能阻塞工作线程。键值大小限制在消息解码后检查，不代表完整的网络层内存保护。尚未进行性能基准测试，不提供 QPS、P99 或生产容量承诺。
+RocksDB 同步 I/O 在 RPC 回调中执行，可能阻塞工作线程。键值大小限制在消息解码后检查，不代表完整的网络层内存保护。提供可重复的基准测试工具，但本机、短时、小工作集的结果不能作为生产容量承诺。
 
 ## 文档
 
 - [代码导读](docs/code-tour.md)
 - [架构与路线图](docs/implementation-plan.md)
 - [验证记录](docs/verification.md)
+- [性能测量方法与命令](docs/benchmarking.md)
 - [第三方组件与许可证](THIRD_PARTY_NOTICES.md)
 
 ## 许可证

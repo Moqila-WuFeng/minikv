@@ -32,8 +32,10 @@ add_executable(minikv_server src/server_main.cpp src/kv_service.cpp)
 target_link_libraries(minikv_server PRIVATE minikv_store minikv_proto PkgConfig::BRPC gflags Threads::Threads)
 add_executable(minikv_cli src/client_main.cpp)
 target_link_libraries(minikv_cli PRIVATE minikv_proto PkgConfig::BRPC gflags Threads::Threads)
+add_executable(minikv_bench src/bench_main.cpp)
+target_link_libraries(minikv_bench PRIVATE minikv_proto PkgConfig::BRPC gflags Threads::Threads)
 
-foreach(target minikv_store minikv_server minikv_cli)
+foreach(target minikv_store minikv_server minikv_cli minikv_bench)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
 
@@ -47,6 +49,22 @@ if(BUILD_TESTING)
     add_test(NAME rpc_integration COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration_test.py
         $<TARGET_FILE:minikv_server> $<TARGET_FILE:minikv_cli>)
+    add_executable(bench_stats_test tests/bench_stats_test.cpp)
+    target_include_directories(bench_stats_test PRIVATE src)
+    target_compile_options(bench_stats_test PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME bench_stats COMMAND bench_stats_test)
+    add_test(NAME benchmark_contract COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/benchmark_test.py
+        $<TARGET_FILE:minikv_server> $<TARGET_FILE:minikv_bench> $<TARGET_FILE:minikv_cli>)
+    set_tests_properties(benchmark_contract PROPERTIES TIMEOUT 90)
+    add_test(NAME benchmark_runner COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/benchmark_runner_test.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/compare-wal.py $<TARGET_FILE_DIR:minikv_server>)
+    set_tests_properties(benchmark_runner PROPERTIES TIMEOUT 90)
+    add_test(NAME benchmark_runner_unit COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/benchmark_runner_unit_test.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/compare-wal.py)
+    set_tests_properties(benchmark_runner_unit PROPERTIES TIMEOUT 15)
     set_tests_properties(store_contract PROPERTIES TIMEOUT 30)
     set_tests_properties(rpc_integration PROPERTIES TIMEOUT 90)
 endif()
