@@ -54,6 +54,21 @@ def main():
 
         try:
             start()
+            occupied = subprocess.run(
+                [str(server_bin), f"--listen={endpoint}", f"--db_path={root / 'other-db'}",
+                 "--ttl_sweep_interval_ms=60000"],
+                capture_output=True, timeout=5,
+            )
+            check(occupied.returncode != 0, "occupied port fails and stops cleanup worker promptly")
+            call("put", "ttl", "temporary", extra=("--ttl_ms=100",))
+            time.sleep(0.15)
+            call("get", "ttl", expected=2)
+            call("put", "ttl-reset", "old", extra=("--ttl_ms=100",))
+            call("put", "ttl-reset", "permanent")
+            time.sleep(0.15)
+            check(call("get", "ttl-reset").stdout == b"permanent\n", "overwrite clears TTL")
+            call("put", "ttl-invalid", "x", extra=("--ttl_ms=-1",), expected=3)
+            call("get", "ttl-reset", extra=("--ttl_ms=100",), expected=3)
             check(call("put", "name", "MiniKV").stdout == b"OK\n", "put output")
             check(call("get", "name").stdout == b"MiniKV\n", "get output")
             with open("/dev/full", "wb") as full:
@@ -92,9 +107,12 @@ def main():
                 list(executor.map(concurrent_roundtrip, range(12)))
 
             call("put", "survives", "acknowledged")
+            call("put", "expires-offline", "temporary", extra=("--ttl_ms=100",))
             server.kill()
             server.wait(timeout=5)
+            time.sleep(0.15)
             start()
+            call("get", "expires-offline", expected=2)
             check(call("get", "survives").stdout == b"acknowledged\n", "SIGKILL recovery")
             call("get", "name", expected=2)
             call("get", "binary", extra=(f"--output_file={destination}",))
@@ -102,7 +120,7 @@ def main():
             server.terminate()
             check(server.wait(timeout=10) == 0, "graceful shutdown")
             call("get", "survives", expected=1)
-            print("PASS: RPC CRUD, errors, binary limits, concurrency, SIGKILL recovery, shutdown")
+            print("PASS: RPC CRUD, TTL, errors, binary limits, concurrency, SIGKILL recovery, shutdown")
         except Exception:
             log.flush()
             print((root / "server.log").read_text(errors="replace")[-12000:], file=sys.stderr)

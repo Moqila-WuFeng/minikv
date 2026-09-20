@@ -52,7 +52,7 @@ CMake 在构建目录生成 `minikv.pb.h/.cc`，不要手动修改生成文件�
 
 Put/Get/Delete 首先检查键的大小，然后调用 RocksDB。Put 另外检查值长度；Get 接收输出字符串指针，并通过 Status 区分成功、找不到、非法参数、I/O 错误。
 
-RocksDB 允许多个线程对同一个 DB 对象并发调用常规读写操作，所以这里没有额外加一把全局 mutex。打开、销毁 DB 不能与正在执行的请求并发发生。`write_options_` 在启动后不再修改，只被并发读取。
+RocksDB 允许多个线程对同一个 DB 对象并发调用常规读写操作。TTL 引入了跨调用的一致性要求，因此使用 64 个按键哈希选择的分段 mutex，而非单一全局锁。打开、销毁 DB 不能与正在执行的请求并发发生。`write_options_` 在启动后不再修改，只被并发读取。
 
 普通共享 `int` 的并发自增需要保护，而 RocksDB 的公共读写 API 已提供相应并发支持。但“Get 后计算再 Put”这样的多个操作组合，并不会自动成为一个原子事务。
 
@@ -72,7 +72,7 @@ Get 仅在状态成功时设置 value，避免在存储错误时返回不明确�
 
 文件：`src/server_main.cpp`。
 
-按顺序创建 Store、service、Server。C++ 局部对象按相反顺序销毁，因此 Server 先退出，再销毁服务和数据库。`SERVER_DOESNT_OWN_SERVICE` 表示 service 由当前作用域管理，Server 不负责 delete 它。
+按顺序创建 Store、ExpiryWorker、service、Server。C++ 局部对象按相反顺序销毁，因此 Server 先退出，再销毁服务、停止并 join 清理线程、关闭数据库。`SERVER_DOESNT_OWN_SERVICE` 表示 service 由当前作用域管理，Server 不负责 delete 它。
 
 `RunUntilAskedToQuit` 等待退出信号并停止、等待服务任务结束。我们显式开启 bRPC 的 SIGTERM 优雅退出开关，并在监听之前安装框架退出处理器。这是端到端测试发现并验证修复的一个真实集成问题。
 
@@ -106,4 +106,4 @@ Get 仅在状态成功时设置 value，避免在存储错误时返回不明确�
 
 现已提供 `src/bench_main.cpp` 和 `scripts/compare-wal.py`。前者使用起跑屏障协调多个原生线程，每个线程执行同步 RPC 并维护自己的结果，结束后统一合并；后者在临时数据库中编排 WAL 同步策略对比。参见[性能测量](benchmarking.md)。
 
-TTL 扩展仍未实现：它需要设计过期时间编码、读时判定和后台清理，并保证清理过程不会删除刚被其他请求更新的数据。参见[路线图](implementation-plan.md)。
+TTL 已实现：`Store::Put` 用 WriteBatch 同时写值和截止时间，`Get` 在同键锁内判断有效期；`SweepExpired` 分批扫描并在锁内重读，避免旧迭代器误删新值。`ExpiryWorker` 管理清理线程。完整说明见 [TTL 设计](ttl-design.md)。

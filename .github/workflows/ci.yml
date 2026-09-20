@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MINIKV_HOME: ${{ github.workspace }}/.ci
+      MINIKV_JOBS: 2
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Build dependencies and run Debug tests
+        run: bash scripts/bootstrap.sh
+      - name: Build and test Release
+        run: |
+          cmake -S . -B "$MINIKV_HOME/build-release" -DCMAKE_BUILD_TYPE=Release -DBRPC_ROOT="$MINIKV_HOME/.deps/brpc-install"
+          cmake --build "$MINIKV_HOME/build-release" -j2
+          ctest --test-dir "$MINIKV_HOME/build-release" --output-on-failure

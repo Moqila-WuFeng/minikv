@@ -11,6 +11,7 @@
 
 DEFINE_string(server, "127.0.0.1:18081", "MiniKV server endpoint");
 DEFINE_int32(timeout_ms, 2000, "Per-call timeout in milliseconds");
+DEFINE_int64(ttl_ms, 0, "Put lifetime in milliseconds; 0 means no expiration");
 DEFINE_string(value_file, "", "Read Put value from a binary file");
 DEFINE_string(output_file, "", "Write Get value to a binary file, without newline");
 
@@ -26,9 +27,10 @@ int Usage() {
 int main(int argc, char** argv) {
     gflags::SetUsageMessage("MiniKV command-line client; use --help for flags");
     gflags::ParseCommandLineFlags(&argc, &argv, true);
-    if (argc < 3 || FLAGS_timeout_ms < 1) return Usage();
+    if (argc < 3 || FLAGS_timeout_ms < 1 || FLAGS_ttl_ms < 0) return Usage();
     const std::string command = argv[1];
     if (command != "put" && command != "get" && command != "delete") return Usage();
+    if (command != "put" && FLAGS_ttl_ms != 0) return Usage();
     const int expected = command == "put" && FLAGS_value_file.empty() ? 4 : 3;
     if (argc != expected || (!FLAGS_value_file.empty() && command != "put") ||
         (!FLAGS_output_file.empty() && command != "get")) return Usage();
@@ -71,6 +73,7 @@ int main(int argc, char** argv) {
         minikv::PutRequest request;
         request.set_key(argv[2]);
         request.set_value(value);
+        request.set_ttl_ms(FLAGS_ttl_ms);
         stub.Put(&controller, &request, &response, nullptr);
     } else {
         minikv::KeyRequest request;

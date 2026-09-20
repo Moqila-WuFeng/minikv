@@ -29,7 +29,7 @@ void SetStatus(const rocksdb::Status& status, Response* response) {
 void KVServiceImpl::Put(google::protobuf::RpcController*, const PutRequest* request,
                         Response* response, google::protobuf::Closure* done) {
     brpc::ClosureGuard guard(done);
-    SetStatus(store_.Put(request->key(), request->value()), response);
+    SetStatus(store_.Put(request->key(), request->value(), request->ttl_ms()), response);
 }
 
 void KVServiceImpl::Get(google::protobuf::RpcController*, const KeyRequest* request,

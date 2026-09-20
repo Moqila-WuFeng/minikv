@@ -51,6 +51,30 @@ NOT_FOUND、读回内容不匹配、RPC 不可达、标准输出失败、报告�
 Shell 启动脚本通过 `bash -n`。上游依赖及 API 来源见
 [性能测量说明](benchmarking.md)和[第三方声明](../THIRD_PARTY_NOTICES.md)。
 
+## 0.2 TTL 验收（2026-09-21）
+
+WSL / Ubuntu 24.04 中分别重新构建 Debug 和 Release，两种构建的七组 CTest 均通过：
+`store_contract`、`ttl_contract`、`rpc_integration`、`bench_stats`、`benchmark_contract`、
+`benchmark_runner`、`benchmark_runner_unit`。
+
+新增验证范围：
+
+- 默认列族原始二进制旧数据升级，TTL 列族重开和持久化截止时间。
+- 假时钟精确到期、系统时钟回拨的已声明语义、负时长、截止时间溢出、覆盖清除 TTL。
+- 每轮扫描数量限制、游标推进、值和元数据均删除，以及损坏元数据后的清理进度。
+- 受控交错：清理器已创建包含过期候选的迭代器，在处理首键时暂停，另一个线程把后续候选改为永久值，恢复清理后新值仍在。
+- 后台线程实际执行清理、清理与关闭并发、长扫描间隔不拖延关闭、端口占用导致启动失败时线程回收。
+- 真实 CLI 的 TTL 使用和参数错误，SIGKILL 后在原截止时间判断到期。
+
+TTL 首次 RPC 测试在未实现 `--ttl_ms` 时失败；损坏元数据推进测试在修复前失败，修复后通过。
+独立审查指出并发与后台清理证据不足，随后增加上述受控测试，而不是仅凭 Get 的 NOT_FOUND 推断物理删除。
+这里的删除指两列族都返回 NotFound，不代表 SST 空间已经被 compaction 回收。
+关闭测试验证正常回收及有界返回，但未穷举线程调度，也未精确控制析构函数进入时点。
+
+新增 GitHub Actions 配置在 Ubuntu 24.04 构建依赖并运行 Debug/Release 测试。
+本地验证结果与远程 CI 状态分开：远程运行记录以仓库 Actions 页面为准。
+2026-09-19 性能报告保留为旧版本历史样本，不作为新增 TTL 元数据与锁之后的性能结论。
+
 ## 结论边界
 
 - SIGKILL 是进程级故障，不是 WSL VM 崩溃、系统断电或磁盘故障。

@@ -8,6 +8,7 @@
 
 - `Put / Get / Delete`，支持覆盖写入、空值和幂等删除。
 - RocksDB 持久化，默认开启 WAL 同步写。
+- 按键 TTL：持久化截止时间、读时过期、分批后台回收及并发覆盖保护。
 - 非空文本键，最多 1024 字节；二进制值，最多 1 MiB。
 - C++ CLI 支持文本参数及二进制文件导入、导出。
 - 独立的业务错误码与 RPC 错误处理，客户端不自动重试。
@@ -28,6 +29,7 @@ minikv_cli -> Protobuf / bRPC -> KVServiceImpl -> Store -> RocksDB
 | --- | --- |
 | `proto/minikv.proto` | RPC 方法、消息和业务错误码 |
 | `src/store.*` | RocksDB 生命周期、输入边界和键值操作 |
+| `src/expiry_worker.h` | 定时分批清理与线程退出管理 |
 | `src/kv_service.*` | RPC 方法实现与存储错误映射 |
 | `src/server_main.cpp` | 参数、启动与优雅关闭 |
 | `src/client_main.cpp` | 命令行解析和同步 RPC 调用 |
@@ -87,11 +89,23 @@ bash scripts/run-client.sh --output_file=/path/to/output.bin get blob
 
 客户端退出码：0 成功；1 RPC 或标准输出错误；2 键不存在；3 参数或文件错误；4 服务端存储错误。
 
+设置过期时间（毫秒），不传或传 0 表示永久保存：
+
+```bash
+bash scripts/run-client.sh --ttl_ms=2000 put session example
+sleep 3
+bash scripts/run-client.sh get session
+```
+
+普通 Put 覆盖同一个键会清除之前的 TTL。时间语义、清理策略及旧数据升级限制见 [TTL 设计](docs/ttl-design.md)。
+
 ## 数据语义
 
 | 情况 | 行为 |
 | --- | --- |
 | 重复 Put | 覆盖旧值；并发写入顺序由实际存储操作顺序决定 |
+| TTL 到期 | Get 返回 NOT_FOUND；后台异步删除值与过期元数据 |
+| 普通 Put 覆盖带 TTL 的键 | 新值永久保存，清除旧 TTL |
 | 删除不存在的键 | 返回成功 |
 | 空值 | 合法，与键不存在区分 |
 | RPC 超时 | 写入结果可能未知，不自动重试 |
@@ -103,9 +117,10 @@ bash scripts/run-client.sh --output_file=/path/to/output.bin get blob
 
 ## 测试
 
-CTest 包含六组测试：
+CTest 包含七组测试：
 
 - `store_contract`：CRUD、覆盖、空值、二进制、长度边界、数据库锁、四线程独立键读写和数据库重开。
+- `ttl_contract`：假时钟边界、旧库升级、重启、截止时间溢出、损坏元数据、受控并发交错、后台删除与退出。
 - `rpc_integration`：真实 C++ 客户端与服务端、退出码、标准输出失败、1 MiB 二进制文件、并发请求、SIGKILL 恢复、删除持久化、SIGTERM 退出及服务不可达。
 - `bench_stats`：nearest-rank 延迟分位数、空样本和小样本边界。
 - `benchmark_contract`：压测计数、预热隔离、读回校验、参数边界及错误路径。
@@ -116,12 +131,16 @@ CTest 包含六组测试：
 
 ## 当前边界
 
-MiniKV 当前是单机服务，尚不支持 TTL、复制、分片、事务、认证、TLS 或独立存储执行队列。默认仅监听回环地址，不应直接暴露到不可信网络。
+MiniKV 0.2 是范围明确的单机服务，尚不支持复制、分片、事务、认证、TLS 或独立存储执行队列。默认仅监听回环地址，不应直接暴露到不可信网络。
+
+TTL 使用系统时钟，时间跳变会影响过期。0.1.x 数据可原地升级；新增元数据列族后不能直接用旧服务打开，升级前应停服并完整备份。
 
 RocksDB 同步 I/O 在 RPC 回调中执行，可能阻塞工作线程。键值大小限制在消息解码后检查，不代表完整的网络层内存保护。提供可重复的基准测试工具，但本机、短时、小工作集的结果不能作为生产容量承诺。
 
 ## 文档
 
+- [项目全貌、能力证据与验收边界](docs/project-overview.md)
+- [TTL：数据格式、并发、清理与升级](docs/ttl-design.md)
 - [学习指南：从构建到 RPC、存储与并发](docs/learning-guide.md)
 - [动手实验：命令、预期结果与排错](docs/learning-labs.md)
 - [代码导读](docs/code-tour.md)
@@ -130,6 +149,7 @@ RocksDB 同步 I/O 在 RPC 回调中执行，可能阻塞工作线程。键值�
 - [性能测量方法与命令](docs/benchmarking.md)
 - [WAL 对比样本与原始数据](docs/benchmarks/2026-09-19.md)
 - [第三方组件与许可证](THIRD_PARTY_NOTICES.md)
+- [版本记录](CHANGELOG.md)
 
 ## 许可证
 

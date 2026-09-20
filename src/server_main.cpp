@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "kv_service.h"
+#include "expiry_worker.h"
 
 #include <brpc/server.h>
 #include <brpc/controller.h>
@@ -13,13 +14,17 @@ DEFINE_string(db_path, "./minikv-data", "RocksDB directory");
 DEFINE_bool(sync_writes, true, "Sync the WAL before acknowledging Put/Delete");
 DEFINE_int32(worker_threads, 0, "bRPC worker thread hint; 0 keeps the framework default");
 DEFINE_int32(max_concurrency, 64, "bRPC built-in concurrent request limit");
+DEFINE_int32(ttl_sweep_interval_ms, 1000, "Background expiration scan interval in milliseconds");
+DEFINE_int32(ttl_sweep_batch_size, 256, "Maximum metadata entries scanned per cleanup pass");
 
 int main(int argc, char** argv) {
     gflags::SetUsageMessage("MiniKV single-node persistent KV server");
     gflags::SetCommandLineOption("graceful_quit_on_sigterm", "true");
     gflags::ParseCommandLineFlags(&argc, &argv, true);
-    if (argc != 1 || FLAGS_worker_threads < 0 || FLAGS_max_concurrency < 1 || FLAGS_db_path.empty()) {
-        std::cerr << "Invalid arguments: nonnegative thread hint, positive concurrency and a DB path are required\n";
+    if (argc != 1 || FLAGS_worker_threads < 0 || FLAGS_max_concurrency < 1 || FLAGS_db_path.empty() ||
+        FLAGS_ttl_sweep_interval_ms < 1 || FLAGS_ttl_sweep_batch_size < 1 || FLAGS_ttl_sweep_batch_size > 10000) {
+        std::cerr << "Invalid arguments: require nonnegative thread hint, positive concurrency, DB path, "
+                     "positive TTL scan interval and batch size 1..10000\n";
         return 1;
     }
     std::error_code error;
@@ -34,6 +39,7 @@ int main(int argc, char** argv) {
         std::cerr << "Open database: " << status.ToString() << '\n';
         return 1;
     }
+    minikv::ExpiryWorker cleanup(store, FLAGS_ttl_sweep_interval_ms, FLAGS_ttl_sweep_batch_size);
 
     // Declaration order keeps the service and DB alive until Server is destroyed.
     minikv::KVServiceImpl service(store);

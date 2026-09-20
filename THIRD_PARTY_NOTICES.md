@@ -78,3 +78,19 @@ and [RocksDB's benchmark documentation](https://github.com/facebook/rocksdb/wiki
 No benchmark source was copied from those projects. MiniKV's workload driver,
 statistics, isolated experiment runner and tests are independently implemented
 under this project's Apache-2.0 license. No additional runtime library was added.
+
+## TTL Design References
+
+TTL storage follows the public API contracts documented in RocksDB's
+[Column Families](https://github.com/facebook/rocksdb/wiki/Column-Families)
+and [Time to Live](https://github.com/facebook/rocksdb/wiki/Time-to-Live) pages.
+MiniKV implements its own expiration contract, metadata layout, striped locking,
+bounded cleanup and tests; no third-party TTL source was copied.
+
+## CI Tooling
+
+The CI workflow invokes [actions/checkout](https://github.com/actions/checkout)
+v4.2.2 at commit `11bd71901bbe5b1630ceea73d27597364c9af683`, distributed upstream
+under the [MIT License](https://github.com/actions/checkout/blob/11bd71901bbe5b1630ceea73d27597364c9af683/LICENSE).
+Its source and binaries are not redistributed in this repository; GitHub Actions
+fetches the action at workflow execution time. It is not a MiniKV runtime dependency.

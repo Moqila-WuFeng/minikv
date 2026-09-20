@@ -271,6 +271,25 @@ quit
 | benchmark 的 Get 先产生写入 | 默认 `prefill=true`，不是纯只读访问现有业务库的工具 |
 | 两个终端的变量不一致 | 每个 Shell 都有自己的环境，要分别设置 |
 
+## 实验 9：TTL 与覆盖写
+
+在前面已启动服务的终端 B，使用同样的 `MINIKV_BIN` 和服务地址；下面显式使用实验端口 18091：
+
+```bash
+"$MINIKV_BIN/minikv_cli" --server=127.0.0.1:18091 --ttl_ms=2000 put temporary value
+sleep 3
+"$MINIKV_BIN/minikv_cli" --server=127.0.0.1:18091 get temporary
+echo "exit=$?"
+"$MINIKV_BIN/minikv_cli" --server=127.0.0.1:18091 --ttl_ms=2000 put temporary old
+"$MINIKV_BIN/minikv_cli" --server=127.0.0.1:18091 put temporary permanent
+sleep 3
+"$MINIKV_BIN/minikv_cli" --server=127.0.0.1:18091 get temporary
+```
+
+第一次 Get 为 `NOT_FOUND`、退出码 2；最后一次为 `permanent`，说明普通 Put 清除了旧 TTL。
+这验证逻辑过期，不能证明 SST 空间已经释放。后台删除、旧快照竞争和线程关闭由 `ttl_contract` 自动测试。
+阅读 [TTL 设计](ttl-design.md)，重点解释为什么需要“WriteBatch + 同键锁 + 锁内重读”，而不是仅定时 Delete。
+
 ## 完成后的整理
 
 在终端 A 用 Ctrl+C 关闭自己启动的服务。手动实验目录会保留供观察；自动化测试和对比脚本的临时数据库会自行清理。

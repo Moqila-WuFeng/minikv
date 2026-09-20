@@ -1,7 +1,7 @@
 # MiniKV 学习指南
 
 适合已经熟悉 C++ 基础语法、能够使用 Linux，但尚不熟悉多线程网络服务的读者。
-本文对应包含 RPC 基准工具的版本；服务协议仍是 Put/Get/Delete，没有 TTL。
+本文对应 0.2 版本，包含 RPC 基准工具和 TTL；服务方法仍是 Put/Get/Delete，Put 支持可选过期时间。
 
 这不是要求从头实现一遍。先读懂一条请求为什么成功，再理解它为什么可能失败，最后研究并发和性能。
 
@@ -53,7 +53,7 @@ RocksDB 是链接进服务端的嵌入式库，不是我们另外启动的一个
 
 ### 1.3 当前没有什么
 
-没有 TTL、复制、分片、分布式一致性、多操作事务、认证和 TLS。没有自研线程池、独立存储执行队列或自研 WAL。
+没有复制、分片、分布式一致性、多操作事务、认证和 TLS。没有自研线程池、独立存储执行队列或自研 WAL。
 
 默认只监听回环地址。即使改成其他地址可以连接，也不代表已经适合对外提供服务。
 
@@ -144,7 +144,7 @@ stub.Put(&controller, &request, &response, nullptr);
 
 ```cpp
 brpc::ClosureGuard guard(done);
-SetStatus(store_.Put(request->key(), request->value()), response);
+SetStatus(store_.Put(request->key(), request->value(), request->ttl_ms()), response);
 ```
 
 `store_` 是已有 Store 的引用，不是每来一个请求就新开一个数据库。
@@ -152,7 +152,7 @@ SetStatus(store_.Put(request->key(), request->value()), response);
 
 ### 3.5 Store 做校验，再调用引擎
 
-[`Store::Put`](../src/store.cpp) 依次检查数据库已打开、键长度、值长度，再调用 `db_->Put`。
+[`Store::Put`](../src/store.cpp) 检查数据库已打开、键长度、值长度与 TTL，在同键分段锁内构造 WriteBatch，再调用 `db_->Write` 原子更新值和过期元数据。
 `write_options_` 决定是否同步 WAL；引擎操作返回后，状态沿调用链返回。
 
 非法请求应在这里结束，不能先写入再报告参数不合法。
@@ -195,6 +195,7 @@ SetStatus(store_.Put(request->key(), request->value()), response);
 
 `Store` 使用 `std::unique_ptr<rocksdb::DB>` 持有数据库。成功打开后通过 `reset(database)` 接管所有权。
 当 Store 销毁时，智能指针释放 DB 对象，不需要每条返回路径手写 `delete`。
+新增的列族句柄必须先于 DB 销毁，因此 Store 析构函数先释放两个句柄，再由智能指针关闭数据库。
 
 RAII 的关键是“资源跟随对象生命周期”，不是“使用智能指针就自动线程安全”。
 
@@ -203,11 +204,12 @@ RAII 的关键是“资源跟随对象生命周期”，不是“使用智能指
 ```cpp
 minikv::Store store;
 // Open ...
+minikv::ExpiryWorker cleanup(store, 1000, 256);
 minikv::KVServiceImpl service(store);
 brpc::Server server;
 ```
 
-局部对象按相反顺序销毁：先 Server，再 service，最后 Store。
+局部对象按相反顺序销毁：先 Server，再 service，随后 cleanup 停止并 join 线程，最后 Store。
 service 中的引用要求 Store 活得更久；服务注册使用 `SERVER_DOESNT_OWN_SERVICE`，所以 bRPC 不负责删除这个栈对象。
 
 正常关闭时，先停止接收和等待服务任务结束，再释放数据库。否则在途请求可能访问已释放的 DB，形成悬空引用。
@@ -253,6 +255,10 @@ RocksDB 关于写选项和恢复的原始说明见[基本操作](https://github.
 
 RocksDB 的同一 DB 对象支持常规 Put/Get/Delete 并发调用，相关保证见[官方并发说明](https://github.com/facebook/rocksdb/wiki/Basic-Operations#concurrency)。
 MiniKV 还满足两个使用条件：DB 在工作线程运行前打开，在工作结束后销毁；`write_options_` 初始化后只读。
+
+0.2 为 TTL 增加 64 个按键分段 mutex，保护“读元数据再读值”和“检查过期再删除”等复合操作。
+引擎的单次操作线程安全不能代替这种业务层同步。清理游标另由 sweep mutex 保护；锁顺序固定为 sweep 锁到单个键锁。
+设计和受控交错测试见 [TTL 章节](ttl-design.md)。
 
 这不表示 RocksDB 内部没有锁，也不表示 Store 的所有方法都能在任意时刻并发调用。
 不要在处理请求的同时重新 Open、销毁 Store 或修改共享写选项。
@@ -351,6 +357,7 @@ RocksDB 的同步 I/O 当前直接发生在 RPC 回调中，可能占用工作�
 | 测试组 | 验证的边界 | 不代表什么 |
 | --- | --- | --- |
 | `store_contract` | 直接调用 Store 的 CRUD、长度、并发、重开 | 不验证网络和全部同键交错 |
+| `ttl_contract` | 过期边界、旧库、清理与覆盖交错、后台退出 | 不保证全部调度情况或系统时钟准确性 |
 | `rpc_integration` | 真客户端、真服务、进程故障恢复 | 不等于断电、磁盘损坏测试 |
 | `bench_stats` | 已知样本的统计计算 | 不等于测量方法适用于所有负载 |
 | `benchmark_contract` | 工作负载、计数、读回校验和失败路径 | 不等于客户端无限扩展 |
