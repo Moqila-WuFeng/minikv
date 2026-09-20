@@ -1,5 +1,7 @@
 # MiniKV 代码导读
 
+第一次接触本项目可先读[完整学习指南](learning-guide.md)，再做[动手实验](learning-labs.md)。本页保留为快速阅读路线。
+
 ## 从一条命令出发
 
 执行 `minikv_cli put name MiniKV` 后，请求经历：

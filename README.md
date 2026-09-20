@@ -122,6 +122,8 @@ RocksDB 同步 I/O 在 RPC 回调中执行，可能阻塞工作线程。键值�
 
 ## 文档
 
+- [学习指南：从构建到 RPC、存储与并发](docs/learning-guide.md)
+- [动手实验：命令、预期结果与排错](docs/learning-labs.md)
 - [代码导读](docs/code-tour.md)
 - [架构与路线图](docs/implementation-plan.md)
 - [验证记录](docs/verification.md)
